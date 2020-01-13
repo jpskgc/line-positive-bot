@@ -1,0 +1,28 @@
+{
+  "PositiveLineBotTable": [
+    {
+      "PutRequest": {
+        "Item": {
+          "Id": {"N": "1"},
+          "Name": {"S": "test"}
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "Id": {"N": "2"},
+          "Name": {"S": "testtest"}
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "Id": {"N": "3"},
+          "Name": {"S": "testtesttest"}
+        }
+      }
+    }
+  ]
+}
