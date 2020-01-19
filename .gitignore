@@ -3,3 +3,5 @@ positive-line-bot/positive-line-bot
 samconfig.toml
 .DS_Store
 vendor
+test/*
+test/env.json

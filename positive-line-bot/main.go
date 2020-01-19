@@ -2,12 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
+	//"log"
 	"math/rand"
-	"net/http"
 	"os"
 	"time"
 
@@ -17,39 +14,19 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/ssm"
 	//"github.com/line/line-bot-sdk-go/linebot"
 )
 
-var (
-	// DefaultHTTPGetAddress Default Address
-	DefaultHTTPGetAddress = "https://checkip.amazonaws.com"
-
-	// ErrNoIP No IP found in response
-	ErrNoIP = errors.New("No IP in HTTP response")
-
-	// ErrNon200Response non 200 status code in response
-	ErrNon200Response = errors.New("Non 200 Response found")
-)
-
-func exitWithError(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
-}
-
-type Item struct {
-	Key  int
-	Desc string
-	Data map[string]interface{}
+type Positive struct {
+	ID   int    `json:"Id"`
+	Name string `json:"Name"`
 }
 
 func UnmarshalLineRequest(data []byte) (LineRequest, error) {
 	var r LineRequest
 	err := json.Unmarshal(data, &r)
 	return r, err
-}
-
-func (r *LineRequest) Marshal() ([]byte, error) {
-	return json.Marshal(r)
 }
 
 type LineRequest struct {
@@ -76,97 +53,80 @@ type Source struct {
 	Type   string `json:"type"`
 }
 
+func getSSMParameterStore(parameter string) string {
+	svc := ssm.New(session.New(), &aws.Config{
+		Region: aws.String("ap-northeast-1"),
+	})
+
+	res, _ := svc.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(parameter),
+		WithDecryption: aws.Bool(true),
+	})
+	return *res.Parameter.Value
+}
+
 func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 	// myLineRequest, err := UnmarshalLineRequest([]byte(request.Body))
 	// if err != nil {
 	// 	log.Fatal(err)
+	// 	return events.APIGatewayProxyResponse{}, err
 	// }
 
 	// bot, err := linebot.New(
-	// 	os.Getenv("CHANNELSECRET"),
-	// 	os.Getenv("ACCESSTOKEN"),
+	// 	// os.Getenv("LINE_CHANNEL_SECRET"),
+	// 	// os.Getenv("LINE_CHANNEL_TOKEN"),
+	// 	getSSMParameterStore("LINE_CHANNEL_SECRET"),
+	// 	getSSMParameterStore("LINE_CHANNEL_TOKEN"),
 	// )
-
 	// if err != nil {
 	// 	log.Fatal(err)
+	// 	return events.APIGatewayProxyResponse{}, err
 	// }
 
 	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
 	tableName := os.Getenv("DYNAMODB_TABLE_NAME")
 
 	sess := session.Must(session.NewSession())
-
 	config := aws.NewConfig().WithRegion("ap-northeast-1")
 	if len(endpoint) > 0 {
 		config = config.WithEndpoint(endpoint)
 	}
 
-	svc := dynamodb.New(sess, config)
+	db := dynamodb.New(sess, config)
 
-	params := &dynamodb.ScanInput{
-		TableName: aws.String(tableName),
-	}
+	result, err := db.Scan(&dynamodb.ScanInput{
+		TableName:              aws.String(tableName),
+		ConsistentRead:         aws.Bool(true),
+		ReturnConsumedCapacity: aws.String("NONE"),
+	})
 
-	result, err := svc.Scan(params)
+	var positives []Positive
+
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &positives)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to make Query API call, %v", err))
-	}
-
-	items := []Item{}
-
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, &items)
-	if err != nil {
-		exitWithError(fmt.Errorf("failed to unmarshal Query result items, %v", err))
+		fmt.Println(err)
+		return events.APIGatewayProxyResponse{}, err
 	}
 
 	var words []string
-	for i, item := range items {
-		fmt.Printf("%d: Key: %d, Desc: %s\n", i, item.Key, item.Desc)
-		fmt.Printf("\tNum Data Values: %d\n", len(item.Data))
-		for k, v := range item.Data {
-			fmt.Printf("\t- %q: %v\n", k, v)
-			words = append(words, v.(string))
-		}
+	for _, positive := range positives {
+		words = append(words, positive.Name)
 	}
 
 	rand.Seed(time.Now().UnixNano())
 	i := rand.Intn(len(words))
 	word := words[i]
 
-	log.Print(word)
-
 	// var tmpReplyMessage string
 	// tmpReplyMessage = word
 	// if _, err = bot.ReplyMessage(myLineRequest.Events[0].ReplyToken, linebot.NewTextMessage(tmpReplyMessage)).Do(); err != nil {
 	// 	log.Fatal(err)
+	// 	return events.APIGatewayProxyResponse{}, err
 	// }
 
-	resp, err := http.Get(DefaultHTTPGetAddress)
-	if err != nil {
-		return events.APIGatewayProxyResponse{}, err
-	}
-
-	if resp.StatusCode != 200 {
-		return events.APIGatewayProxyResponse{}, ErrNon200Response
-	}
-
-	ip, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return events.APIGatewayProxyResponse{}, err
-	}
-
-	if len(ip) == 0 {
-		return events.APIGatewayProxyResponse{}, ErrNoIP
-	}
-
-	// return events.APIGatewayProxyResponse{
-	// 	Body:       "ok",
-	// 	StatusCode: 200,
-	// }, nil
-
 	return events.APIGatewayProxyResponse{
-		Body:       fmt.Sprintf("Hello, %v", string(ip)),
+		Body:       string(word),
 		StatusCode: 200,
 	}, nil
 }

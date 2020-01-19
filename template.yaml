@@ -3,32 +3,33 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   positive-line-bot
 
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 5
 
 Resources:
   PositiveLineBotFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: positive-line-bot/
       Handler: positive-line-bot
       Runtime: go1.x
+      Tracing: Active
       Policies:
-        - DynamoDBReadPolicy:
-          TableName: !Ref PositiveLineBotTable
-      Tracing: Active # https://docs.aws.amazon.com/lambda/latest/dg/lambda-x-ray.html
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
       Events:
         CatchAll:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             Path: /positive
             Method: GET
-      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+      Environment:
         Variables:
+          # LINE_CHANNEL_SECRET: ''
+          # LINE_CHANNEL_TOKEN: ''
           DYNAMODB_ENDPOINT: ''
-          DYNAMODB_TABLE_NAME: ''
+          DYNAMODB_TABLE_NAME: 'PositiveLineBotTable'
 
   PositiveLineBotTable:
     Type: AWS::DynamoDB::Table
@@ -40,9 +41,9 @@ Resources:
       KeySchema:
         - AttributeName: 'Id'
           KeyType: 'HASH'
-      ProvisionedThroughput:
-        ReadCapacityUnits: '5'
-        WriteCapacityUnits: '5'
+      # ProvisionedThroughput:
+      #   ReadCapacityUnits: '5'
+      #   WriteCapacityUnits: '5'
       BillingMode: PAY_PER_REQUEST
 
 Outputs:
